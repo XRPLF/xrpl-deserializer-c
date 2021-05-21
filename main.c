@@ -1,3 +1,10 @@
+/**
+ * XRPL Deserializer 
+ * Author: Richard Holland
+ * Date: 21/5/21
+ * Pass a hex encoded xrpl binary object via argument to the executable
+ * Output: JSON
+ */
 #include <stdio.h>
 #include <stdlib.h>
 #include <stdint.h>
@@ -37,35 +44,7 @@ int append(int indent_level, uint8_t** output, int* upto, int* len, uint8_t* app
 #define SBUF(x) x,sizeof(x)
 #define APPENDPARAMS indent_level, output, &upto, &len
 #define APPENDNOINDENT 0, output, &upto, &len
-/*
-int main(int argc, char** argv)
-{
-    int len = 5;
-    uint8_t* output = malloc(len);
-    int upto = 0;
 
-
-  //  printf("output: %llx\n", output);
-    if (!append_output(&output, &upto, &len, SBUF("testing1 ")))
-        return fprintf(stderr, "realloc failed 1\n");
-    if (!append_output(&output, &upto, &len, SBUF("testing2 ")))
-        return fprintf(stderr, "realloc failed 2\n");
-    if (!append_output(&output, &upto, &len, SBUF("!!")))
-        return fprintf(stderr, "realloc failed 3\n");
-
-
-
-    //printf("upto: %d, len: %d\n", upto, len);
-
-    //output[upto] = '\0';
-
-    printf("%s\n", output);
-
-    return 0;
-}*/
-
-
-//    printf("remaining: %d - require: %d\n", remaining, (b));
 #define REQUIRE(b)\
 {\
     if (remaining < (b))\
@@ -390,319 +369,301 @@ int deserialize(uint8_t** output, uint8_t* input, int input_len)
         else if (field_id == 0xf0011UL) append(APPENDPARAMS, SBUF("NegativeUNL: "));
 
 
-            /*
-             *        int size =                                                                                                     
-            ( type_code == 1 ? 2U : // UINT16                                                                          
-            ( type_code == 2 ? 4U : // uint32                                                                          
-            ( type_code == 3 ? 8U : // uint64                                                                          
-            ( type_code == 4 ? 16U : // uint128                                                                        
-            ( type_code == 5 ? 32U : // uint256                                                                        
-            ( type_code == 6 ? 8U  : // amount (8 bytes or 48 bytes)                                                   
-            ( type_code == 7 ? 0U  : // blob vl                                                                        
-            ( type_code == 8 ? 21U : // account                                                                        
-            ( type_code == 16 ? 1U : // uint8                                                                          
-            ( type_code == 17 ? 20U : // uint160                                                                       
-            ( type_code == 18 ? 0U  : // pathset                                                                       
-            ( type_code == 19 ? 0U : // vector256                                                                      
-            ( type_code == 14 ? 0U : // array/object                                                                   
-            ( type_code == 15 ? 0U : // array/object                                                                   
-                (error=1)))))))))))))));                                                                               
-                                           */
-            // fixed length types including amount
-            if (type_code == 18)
+        // fixed length types including amount
+        if (type_code == 18)
+        {
+            // pathset
+        }
+        else if (type_code == 14)
+        {   // object
+            if (field_code == 1)
             {
-                // pathset
+                indent_level--;
+                object_level--;
+                append(APPENDPARAMS, SBUF("}"));
             }
-            else if (type_code == 14)
-            {   // object
-                if (field_code == 1)
-                {
-                    indent_level--;
-                    object_level--;
-                    append(APPENDPARAMS, SBUF("}"));
-                }
-                else
-                {
-                    append(APPENDNOINDENT, SBUF("{\n"));
-                    object_level++;
-                    indent_level++;
-                    nocomma = 1;
-                }
-            }
-            else if (type_code == 15)
-            {   // array
-                if (field_code == 1)
-                {
-                    indent_level--;
-                    array_level--;
-                    append(APPENDPARAMS, SBUF("]"));
-                }
-                else
-                {
-                    append(APPENDPARAMS, SBUF("[\n"));
-                    array_level++;
-                    indent_level++;
-                    nocomma = 1;
-                }
-            }
-            else if (type_code == 8) // account
+            else
             {
+                append(APPENDNOINDENT, SBUF("{\n"));
+                object_level++;
+                indent_level++;
+                nocomma = 1;
+            }
+        }
+        else if (type_code == 15)
+        {   // array
+            if (field_code == 1)
+            {
+                indent_level--;
+                array_level--;
+                append(APPENDPARAMS, SBUF("]"));
+            }
+            else
+            {
+                append(APPENDPARAMS, SBUF("[\n"));
+                array_level++;
+                indent_level++;
+                nocomma = 1;
+            }
+        }
+        else if (type_code == 8) // account
+        {
 
-             //   printf("upto: %d, remaining: %d\n", upto, remaining);
-                REQUIRE(20);
+         //   printf("upto: %d, remaining: %d\n", upto, remaining);
+            REQUIRE(20);
 
-                char acc[64];
-                size_t acc_size = 64;
-                if (!b58check_enc(acc, &acc_size, 0, n + 1, 20))
+            char acc[64];
+            size_t acc_size = 64;
+            if (!b58check_enc(acc, &acc_size, 0, n + 1, 20))
+            {
+                fprintf(stderr, "Error: could not base58 encode\n");
+                return 0;
+            }
+            acc[0] = 'r';
+            append(APPENDNOINDENT, SBUF("\""));
+            append(APPENDNOINDENT, acc, acc_size);
+            append(APPENDNOINDENT, SBUF("\""));
+            ADVANCE(21);
+        }
+        else if (type_code == 4 || type_code == 5 || type_code == 17)
+        {
+            // uint128, uint256, uint160
+            REQUIRE(size-1);
+            
+            append(APPENDNOINDENT, SBUF("\""));
+            char hexout[513];
+            HEX(hexout, n, size);
+            append(APPENDNOINDENT, hexout, size*2);
+            append(APPENDNOINDENT, SBUF("\""));
+
+            ADVANCE(size);    
+        }
+        else if (type_code == 7 || type_code == 19) // blob
+        {
+            int64_t field_len = *n;
+            if (field_len <= 129)
+            {
+                // one byte size
+                ADVANCE(1);
+            }
+            else if (field_len <= 12480)
+            {
+                // two byte size
+                REQUIRE(1);
+                field_len = 193 + ((field_len - 193) * 256) + *n;
+                ADVANCE(2);
+            }
+            else
+            {
+                // three byte size
+                REQUIRE(2);
+                field_len = 12481 + ((field_len - 241) * 0xFFFFU) + ((*(n+1)) * 256) + *(n+2);
+                ADVANCE(3);
+            }
+
+//                printf("vl len: %d\n", field_len);
+            REQUIRE(field_len-1);
+
+            append(APPENDNOINDENT, SBUF("\""));
+            char hexout[1024];
+            int already_printed = 0;
+            int to_print = field_len - already_printed;
+            do
+            {
+                if (to_print > sizeof(hexout)/2)
+                    to_print = sizeof(hexout)/2;
+                HEX(hexout, n + already_printed, to_print);
+                append(APPENDNOINDENT, hexout, to_print*2);
+                already_printed += to_print;
+                to_print = field_len - already_printed;
+            } while (to_print > 0);
+
+            append(APPENDNOINDENT, SBUF("\""));
+
+            ADVANCE(field_len);
+        }
+        else if (type_code == 6) // amount
+        {
+            // issued currency
+            if ((*n) >> 7U)
+            {
+                size = 48U;
+                REQUIRE(47);
+                uint16_t exponent = (((uint16_t)(*n)) << 8U) +
+                                    (uint16_t)(*(n+1));
+
+                exponent &= 0b0011111111000000;
+                exponent >>= 6U;
+                
+                char str[1024];
+                int is_neg = (((*n) >> 6U) & 1U == 0);
+
+                uint64_t mantissa = 
+                    (((uint64_t)((*(n+1) & 0b111111))) << 48U) +
+                    (((uint64_t)((*(n+2)))) << 40U) +
+                    (((uint64_t)((*(n+3)))) << 32U) +
+                    (((uint64_t)((*(n+4)))) << 24U) +
+                    (((uint64_t)((*(n+5)))) << 16U) +
+                    (((uint64_t)((*(n+6)))) <<  8U) +
+                    (((uint64_t)((*(n+7)))) <<  0U);
+
+
+                // currency code = n + 8 ... n + 27
+                // issuer = n + 28 ... n + 47
+
+                int ascii = 1;
+                for (int i = 0; i < 12; ++i)
+                {
+                    if (*(n + 8 + i) != 0)
+                    {
+                        ascii = 0;
+                        break;
+                    }
+                }
+
+                if (ascii)
+                for (int i = 12; i < 15; ++i)
+                {
+                    char x = *(n + 8 + i);
+                    if (x >= 'a' && x <= 'z')
+                        continue;
+                    if (x >= 'A' && x <= 'Z')
+                        continue;
+                    if (x >= '0' && x <= '9')
+                        continue;
+                    ascii = 0;
+                    break;
+                }
+
+                if (ascii)
+                for (int i = 15; i < 20; ++i)
+                {
+                    if (*(n + 8 + i) != 0)
+                    {
+                        ascii = 0;
+                        break;
+                    }
+                }
+
+                char issuer[64];
+                size_t issuer_size = 64;
+                if (!b58check_enc(issuer, &issuer_size, 0, n + 28, 20))
                 {
                     fprintf(stderr, "Error: could not base58 encode\n");
                     return 0;
                 }
-                acc[0] = 'r';
-                append(APPENDNOINDENT, SBUF("\""));
-                append(APPENDNOINDENT, acc, acc_size);
-                append(APPENDNOINDENT, SBUF("\""));
-                ADVANCE(21);
-            }
-            else if (type_code == 4 || type_code == 5 || type_code == 17)
-            {
-                // uint128, uint256, uint160
-                REQUIRE(size-1);
-                
-                append(APPENDNOINDENT, SBUF("\""));
-                char hexout[513];
-                HEX(hexout, n, size);
-                append(APPENDNOINDENT, hexout, size*2);
-                append(APPENDNOINDENT, SBUF("\""));
+                issuer[0] = 'r';
 
-                ADVANCE(size);    
-            }
-            else if (type_code == 7 || type_code == 19) // blob
-            {
-                int64_t field_len = *n;
-                if (field_len <= 129)
+                char currency[41];
+                if (ascii)
                 {
-                    // one byte size
-                    ADVANCE(1);
-                }
-                else if (field_len <= 12480)
-                {
-                    // two byte size
-                    REQUIRE(1);
-                    field_len = 193 + ((field_len - 193) * 256) + *n;
-                    ADVANCE(2);
+                    for (int i = 0; i < 3; ++i)
+                        currency[i] = (char)(*(n + 8 + 12 + i));
+                    currency[3] = '\0';
                 }
                 else
                 {
-                    // three byte size
-                    REQUIRE(2);
-                    field_len = 12481 + ((field_len - 241) * 0xFFFFU) + ((*(n+1)) * 256) + *(n+2);
-                    ADVANCE(3);
+                    for (int i = 0; i < 20; ++i)
+                    {
+                        unsigned char hi = (*(n+8+i)) >> 4U;
+                        unsigned char lo = (*(n+8+i)) & 0xFU;
+                        hi += (hi > 9 ? 'A' - 10 : '0');
+                        lo += (lo > 9 ? 'A' - 10 : '0');
+                        currency[i*2+0] = (char)hi;
+                        currency[i*2+1] = (char)lo;
+                    }
                 }
 
-//                printf("vl len: %d\n", field_len);
-                REQUIRE(field_len-1);
+                int32_t exp = (int32_t)(exponent);
+                exp -= 97;
 
-                append(APPENDNOINDENT, SBUF("\""));
-                char hexout[1024];
-                int already_printed = 0;
-                int to_print = field_len - already_printed;
-                do
-                {
-                    if (to_print > sizeof(hexout)/2)
-                        to_print = sizeof(hexout)/2;
-                    HEX(hexout, n + already_printed, to_print);
-                    append(APPENDNOINDENT, hexout, to_print*2);
-                    already_printed += to_print;
-                    to_print = field_len - already_printed;
-                } while (to_print > 0);
+                append(APPENDNOINDENT, SBUF("{\n"));
+                snprintf(str, 1024, "\tAmount: \"%s%lluE%d\",\n", (is_neg ? "-" : ""), mantissa, exp);
+                append(APPENDPARAMS, str, 1024);
+                append(APPENDPARAMS, SBUF("\tCurrency: \""));
+                append(APPENDNOINDENT, SBUF(currency));
+                append(APPENDNOINDENT, SBUF("\",\n"));
+                append(APPENDPARAMS, SBUF("\tIssuer: \""));
+                append(APPENDNOINDENT, SBUF(issuer));
+                append(APPENDNOINDENT, SBUF("\"\n"));
+                append(APPENDPARAMS, SBUF("}"));
 
-                append(APPENDNOINDENT, SBUF("\""));
-
-                ADVANCE(field_len);
+                ADVANCE(48);
             }
-            else if (type_code == 6) // amount
+            else
             {
-                // issued currency
-                if ((*n) >> 7U)
-                {
-                    size = 48U;
-                    REQUIRE(47);
-                    uint16_t exponent = (((uint16_t)(*n)) << 8U) +
-                                        (uint16_t)(*(n+1));
 
-                    exponent &= 0b0011111111000000;
-                    exponent >>= 6U;
-                    
-                    char str[1024];
-                    int is_neg = (((*n) >> 6U) & 1U == 0);
-
-                    uint64_t mantissa = 
-                        (((uint64_t)((*(n+1) & 0b111111))) << 48U) +
-                        (((uint64_t)((*(n+2)))) << 40U) +
-                        (((uint64_t)((*(n+3)))) << 32U) +
-                        (((uint64_t)((*(n+4)))) << 24U) +
-                        (((uint64_t)((*(n+5)))) << 16U) +
-                        (((uint64_t)((*(n+6)))) <<  8U) +
-                        (((uint64_t)((*(n+7)))) <<  0U);
-
-
-                    // currency code = n + 8 ... n + 27
-                    // issuer = n + 28 ... n + 47
-
-                    int ascii = 1;
-                    for (int i = 0; i < 12; ++i)
-                    {
-                        if (*(n + 8 + i) != 0)
-                        {
-                            ascii = 0;
-                            break;
-                        }
-                    }
-
-                    if (ascii)
-                    for (int i = 12; i < 15; ++i)
-                    {
-                        char x = *(n + 8 + i);
-                        if (x >= 'a' && x <= 'z')
-                            continue;
-                        if (x >= 'A' && x <= 'Z')
-                            continue;
-                        if (x >= '0' && x <= '9')
-                            continue;
-                        ascii = 0;
-                        break;
-                    }
-
-                    if (ascii)
-                    for (int i = 15; i < 20; ++i)
-                    {
-                        if (*(n + 8 + i) != 0)
-                        {
-                            ascii = 0;
-                            break;
-                        }
-                    }
-
-                    char issuer[64];
-                    size_t issuer_size = 64;
-                    if (!b58check_enc(issuer, &issuer_size, 0, n + 28, 20))
-                    {
-                        fprintf(stderr, "Error: could not base58 encode\n");
-                        return 0;
-                    }
-                    issuer[0] = 'r';
-
-                    char currency[41];
-                    if (ascii)
-                    {
-                        for (int i = 0; i < 3; ++i)
-                            currency[i] = (char)(*(n + 8 + 12 + i));
-                        currency[3] = '\0';
-                    }
-                    else
-                    {
-                        for (int i = 0; i < 20; ++i)
-                        {
-                            unsigned char hi = (*(n+8+i)) >> 4U;
-                            unsigned char lo = (*(n+8+i)) & 0xFU;
-                            hi += (hi > 9 ? 'A' - 10 : '0');
-                            lo += (lo > 9 ? 'A' - 10 : '0');
-                            currency[i*2+0] = (char)hi;
-                            currency[i*2+1] = (char)lo;
-                        }
-                    }
-
-                    int32_t exp = (int32_t)(exponent);
-                    exp -= 97;
-
-                    append(APPENDNOINDENT, SBUF("{\n"));
-                    snprintf(str, 1024, "\tAmount: \"%s%lluE%d\",\n", (is_neg ? "-" : ""), mantissa, exp);
-                    append(APPENDPARAMS, str, 1024);
-                    append(APPENDPARAMS, SBUF("\tCurrency: \""));
-                    append(APPENDNOINDENT, SBUF(currency));
-                    append(APPENDNOINDENT, SBUF("\",\n"));
-                    append(APPENDPARAMS, SBUF("\tIssuer: \""));
-                    append(APPENDNOINDENT, SBUF(issuer));
-                    append(APPENDNOINDENT, SBUF("\"\n"));
-                    append(APPENDPARAMS, SBUF("}"));
-
-                    ADVANCE(48);
-                }
-                else
-                {
-
-                    REQUIRE(7);
-                    // xrp (drops) currency
-                    char str[24];
-                    char* s = str;
-                    // handle negative sign bit
-                    if ((*n) >> 6U == 0)
-                        *s++ = '-';
-                
-                    uint64_t number =  
-                        ((uint64_t)((*n) & 0b111111U) << 56U) + 
-                        ((uint64_t)(*(n+1)) << 48U) + 
-                        ((uint64_t)(*(n+2)) << 40U) + 
-                        ((uint64_t)(*(n+3)) << 32U) + 
-                        ((uint64_t)(*(n+4)) << 24U) + 
-                        ((uint64_t)(*(n+5)) << 16U) + 
-                        ((uint64_t)(*(n+6)) <<  8U) + 
-                        ((uint64_t)(*(n+7)) <<  0U);
-                   
-                    snprintf(s, 23, "%llu", number); 
+                REQUIRE(7);
+                // xrp (drops) currency
+                char str[24];
+                char* s = str;
+                // handle negative sign bit
+                if ((*n) >> 6U == 0)
+                    *s++ = '-';
+            
+                uint64_t number =  
+                    ((uint64_t)((*n) & 0b111111U) << 56U) + 
+                    ((uint64_t)(*(n+1)) << 48U) + 
+                    ((uint64_t)(*(n+2)) << 40U) + 
+                    ((uint64_t)(*(n+3)) << 32U) + 
+                    ((uint64_t)(*(n+4)) << 24U) + 
+                    ((uint64_t)(*(n+5)) << 16U) + 
+                    ((uint64_t)(*(n+6)) <<  8U) + 
+                    ((uint64_t)(*(n+7)) <<  0U);
                
-                    
+                snprintf(s, 23, "%llu", number); 
+           
+                
 
-                    append(APPENDNOINDENT, str, 16);
-
-                    ADVANCE(8);
-                }
-            }
-            else if (type_code == 1 || type_code == 2 || type_code == 3 || type_code == 16) // uint16
-            {
-                uint64_t number = 0;
-                if (type_code == 1) // uint16
-                {
-                    REQUIRE(1);
-                    number =  (((uint64_t)(*(n+0))) << 8U) + 
-                              (((uint64_t)(*(n+1))) << 0U);
-                    ADVANCE(2);
-                }
-                else if (type_code == 2) // uint32
-                {
-                    REQUIRE(3);
-                    number = 
-                        (((uint64_t)(*(n+0))) << 24U) +
-                        (((uint64_t)(*(n+1))) << 16U) +
-                        (((uint64_t)(*(n+2))) << 8U ) +
-                        (((uint64_t)(*(n+3))) << 0U );
-
-                    ADVANCE(4);
-                }
-                else if (type_code == 3) // uint64
-                {
-                    REQUIRE(7);
-                    number = 
-                        (((uint64_t)(*(n+0))) << 56U) +
-                        (((uint64_t)(*(n+1))) << 48U) +
-                        (((uint64_t)(*(n+2))) << 40U ) +
-                        (((uint64_t)(*(n+3))) << 32U ) +
-                        (((uint64_t)(*(n+4))) << 24U) +
-                        (((uint64_t)(*(n+5))) << 16U) +
-                        (((uint64_t)(*(n+6))) << 8U ) +
-                        (((uint64_t)(*(n+7))) << 0U );
-                    ADVANCE(8);
-                }
-                else // uint8
-                {
-                    number = *n;
-                    ADVANCE(1);
-                }
-                char str[16];
-                snprintf(str, 16, "%lu", number);
                 append(APPENDNOINDENT, str, 16);
+
+                ADVANCE(8);
             }
+        }
+        else if (type_code == 1 || type_code == 2 || type_code == 3 || type_code == 16) // uint16
+        {
+            uint64_t number = 0;
+            if (type_code == 1) // uint16
+            {
+                REQUIRE(1);
+                number =  (((uint64_t)(*(n+0))) << 8U) + 
+                          (((uint64_t)(*(n+1))) << 0U);
+                ADVANCE(2);
+            }
+            else if (type_code == 2) // uint32
+            {
+                REQUIRE(3);
+                number = 
+                    (((uint64_t)(*(n+0))) << 24U) +
+                    (((uint64_t)(*(n+1))) << 16U) +
+                    (((uint64_t)(*(n+2))) << 8U ) +
+                    (((uint64_t)(*(n+3))) << 0U );
+
+                ADVANCE(4);
+            }
+            else if (type_code == 3) // uint64
+            {
+                REQUIRE(7);
+                number = 
+                    (((uint64_t)(*(n+0))) << 56U) +
+                    (((uint64_t)(*(n+1))) << 48U) +
+                    (((uint64_t)(*(n+2))) << 40U ) +
+                    (((uint64_t)(*(n+3))) << 32U ) +
+                    (((uint64_t)(*(n+4))) << 24U) +
+                    (((uint64_t)(*(n+5))) << 16U) +
+                    (((uint64_t)(*(n+6))) << 8U ) +
+                    (((uint64_t)(*(n+7))) << 0U );
+                ADVANCE(8);
+            }
+            else // uint8
+            {
+                number = *n;
+                ADVANCE(1);
+            }
+            char str[16];
+            snprintf(str, 16, "%lu", number);
+            append(APPENDNOINDENT, str, 16);
+        }
     }
 
     
