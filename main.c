@@ -19,7 +19,7 @@
 int append(int indent_level, uint8_t** output, int* upto, int* len, uint8_t* append, int append_len)
 {
 
-    //printf("append: `%s`\n", append);
+//    printf("append: `%s`\n", append);
     if (*len - *upto < append_len + 1 + indent_level)
     {
         *len *= 2;
@@ -49,14 +49,14 @@ int append(int indent_level, uint8_t** output, int* upto, int* len, uint8_t* app
 {\
     if (remaining < (b))\
     {\
-        fprintf(stderr, "Error: expecting %d bytes at %d but input was short\n", (b), upto);\
+        fprintf(stderr, "Error: expecting %d nibbles at nibble %d but input was short (only %d remain) code line %d\n", (b)*2, upto*2, remaining * 2,  __LINE__);\
         return 0;\
     }\
 }
 
 #define ADVANCE(x)\
 {\
-    n += x; remaining -= x;\
+    n += (x); remaining -= (x);\
 }
 
 #define HEX(out_raw, in_raw, len_raw)\
@@ -75,6 +75,30 @@ int append(int indent_level, uint8_t** output, int* upto, int* len, uint8_t* app
     }\
 }
 
+int is_ascii_currency(uint8_t* y)
+{
+    for (int i = 0; i < 12; ++i)
+        if (y[i] != 0)
+            return 0;
+    for (int i = 12; i < 15; ++i)
+    {
+        char x = y[i];
+        if (x >= 'a' && x <= 'z')
+            continue;
+        if (x >= 'A' && x <= 'Z')
+            continue;
+        if (x >= '0' && x <= '9')
+            continue;
+        return 0;
+    }
+    for (int i = 15; i < 20; ++i)
+        if (y[i] != 0)
+            return 0;
+    return 1;
+}
+
+#define PARSE_CURRENCY()\
+
 
 int deserialize(uint8_t** output, uint8_t* input, int input_len)
 {
@@ -89,8 +113,13 @@ int deserialize(uint8_t** output, uint8_t* input, int input_len)
 
     int object_level = 0;
     int array_level = 0;
-
     int indent_level = 0;
+
+
+
+
+    uint64_t parent_is_array = 0;
+
     append(APPENDPARAMS, SBUF("{\n"));
 
     indent_level++;
@@ -113,6 +142,7 @@ int deserialize(uint8_t** output, uint8_t* input, int input_len)
             append(APPENDNOINDENT, SBUF(",\n"));
 
         nocomma = 0;
+
 
         int field_code = -1;
         int type_code = -1;
@@ -200,6 +230,12 @@ int deserialize(uint8_t** output, uint8_t* input, int input_len)
         uint32_t field_id = (type_code << 16U) + field_code;
 
 //        printf("field_id: %llx\n", field_id);
+        
+        if (parent_is_array & 1 && !((type_code == 14 || type_code == 15) && field_code == 1))
+        {
+            append(APPENDPARAMS, SBUF("{\n"));
+            indent_level++;
+        }
 
         if (field_id == -1UL) append(APPENDPARAMS, SBUF("Invalid: "));
         else if (field_id == 0UL) append(APPENDPARAMS, SBUF("Generic: "));
@@ -369,10 +405,107 @@ int deserialize(uint8_t** output, uint8_t* input, int input_len)
         else if (field_id == 0xf0011UL) append(APPENDPARAMS, SBUF("NegativeUNL: "));
 
 
-        // fixed length types including amount
         if (type_code == 18)
         {
-            // pathset
+            append(APPENDPARAMS, SBUF("[\n"));
+            indent_level++;
+            append(APPENDPARAMS, SBUF("{\n"));
+            indent_level++;
+
+            while (1)
+            {
+                uint8_t path_type = *n;
+                ADVANCE(1);
+                
+                //printf("\nPATH TYPE: %02X\n", path_type);
+                if (path_type == 0x00U)
+                    break;
+
+                
+                if (path_type == 0xFFU)
+                    continue;
+
+                if (path_type & 0x01U)
+                {
+                    REQUIRE(19);
+                    path_type -= 0x01U;
+
+                    // account
+                    append(APPENDPARAMS, SBUF("Account: \""));
+                    char acc[64];
+                    size_t acc_size = 64;
+                    if (!b58check_enc(acc, &acc_size, 0, n + 1, 20))
+                    {
+                        fprintf(stderr, "Error: could not base58 encode\n");
+                        return 0;
+                    }
+                    acc[0] = 'r';
+                    append(APPENDNOINDENT, acc, acc_size);
+                    if (path_type)
+                        append(APPENDNOINDENT, SBUF("\",\n"));
+                    else
+                        append(APPENDNOINDENT, SBUF("\"\n"));
+
+                    ADVANCE(20);
+               }
+
+                if (path_type & 0x10U)
+                {
+                    // currency
+                    path_type -= 0x10U;
+
+                    append(APPENDPARAMS, SBUF("Currency: \""));
+
+                    REQUIRE(19);
+                    char currency[41];
+                    if (is_ascii_currency(n))
+                    {
+                        currency[0] = n[12];
+                        currency[1] = n[13];
+                        currency[2] = n[14];
+                        currency[3] = '\0';
+                    }
+                    else
+                        HEX(currency, n, 20);
+                    
+                    currency[40] = '\0';
+
+                    append(APPENDNOINDENT, currency, 40);
+                    
+                    if (path_type)
+                        append(APPENDNOINDENT, SBUF("\",\n"));
+                    else
+                        append(APPENDNOINDENT, SBUF("\"\n"));
+
+                    ADVANCE(20);
+                }
+
+                if (path_type & 0x20U)
+                {
+                    // issuer
+                    REQUIRE(19);
+
+                    // account
+                    append(APPENDPARAMS, SBUF("Issuer: \""));
+                    char acc[64];
+                    size_t acc_size = 64;
+                    if (!b58check_enc(acc, &acc_size, 0, n + 1, 20))
+                    {
+                        fprintf(stderr, "Error: could not base58 encode\n");
+                        return 0;
+                    }
+                    acc[0] = 'r';
+                    append(APPENDNOINDENT, acc, acc_size);
+                    append(APPENDNOINDENT, SBUF("\"\n"));
+                    ADVANCE(20);
+                }
+            }
+        
+            indent_level--;
+            append(APPENDPARAMS, SBUF("}\n"));
+            indent_level--;
+            append(APPENDPARAMS, SBUF("]\n"));
+
         }
         else if (type_code == 14)
         {   // object
@@ -381,6 +514,13 @@ int deserialize(uint8_t** output, uint8_t* input, int input_len)
                 indent_level--;
                 object_level--;
                 append(APPENDPARAMS, SBUF("}"));
+                parent_is_array >>= 1U;
+                if (parent_is_array & 1)
+                {
+                    indent_level--;
+                    append(APPENDNOINDENT, SBUF("\n"));
+                    append(APPENDPARAMS, SBUF("}"));
+                }
             }
             else
             {
@@ -388,6 +528,7 @@ int deserialize(uint8_t** output, uint8_t* input, int input_len)
                 object_level++;
                 indent_level++;
                 nocomma = 1;
+                parent_is_array <<= 1U;
             }
         }
         else if (type_code == 15)
@@ -397,13 +538,16 @@ int deserialize(uint8_t** output, uint8_t* input, int input_len)
                 indent_level--;
                 array_level--;
                 append(APPENDPARAMS, SBUF("]"));
+                parent_is_array >>= 1U;
             }
             else
             {
-                append(APPENDPARAMS, SBUF("[\n"));
+                append(APPENDNOINDENT, SBUF("[\n"));
                 array_level++;
                 indent_level++;
                 nocomma = 1;
+                parent_is_array <<= 1U;
+                parent_is_array |= 1U;
             }
         }
         else if (type_code == 8) // account
@@ -484,20 +628,16 @@ int deserialize(uint8_t** output, uint8_t* input, int input_len)
         }
         else if (type_code == 6) // amount
         {
-            // issued currency
             if ((*n) >> 7U)
             {
                 size = 48U;
                 REQUIRE(47);
                 uint16_t exponent = (((uint16_t)(*n)) << 8U) +
                                     (uint16_t)(*(n+1));
-
                 exponent &= 0b0011111111000000;
                 exponent >>= 6U;
-                
                 char str[1024];
                 int is_neg = (((*n) >> 6U) & 1U == 0);
-
                 uint64_t mantissa = 
                     (((uint64_t)((*(n+1) & 0b111111))) << 48U) +
                     (((uint64_t)((*(n+2)))) << 40U) +
@@ -506,45 +646,7 @@ int deserialize(uint8_t** output, uint8_t* input, int input_len)
                     (((uint64_t)((*(n+5)))) << 16U) +
                     (((uint64_t)((*(n+6)))) <<  8U) +
                     (((uint64_t)((*(n+7)))) <<  0U);
-
-
-                // currency code = n + 8 ... n + 27
-                // issuer = n + 28 ... n + 47
-
-                int ascii = 1;
-                for (int i = 0; i < 12; ++i)
-                {
-                    if (*(n + 8 + i) != 0)
-                    {
-                        ascii = 0;
-                        break;
-                    }
-                }
-
-                if (ascii)
-                for (int i = 12; i < 15; ++i)
-                {
-                    char x = *(n + 8 + i);
-                    if (x >= 'a' && x <= 'z')
-                        continue;
-                    if (x >= 'A' && x <= 'Z')
-                        continue;
-                    if (x >= '0' && x <= '9')
-                        continue;
-                    ascii = 0;
-                    break;
-                }
-
-                if (ascii)
-                for (int i = 15; i < 20; ++i)
-                {
-                    if (*(n + 8 + i) != 0)
-                    {
-                        ascii = 0;
-                        break;
-                    }
-                }
-
+                int ascii = is_ascii_currency(n+8);
                 char issuer[64];
                 size_t issuer_size = 64;
                 if (!b58check_enc(issuer, &issuer_size, 0, n + 28, 20))
@@ -553,7 +655,6 @@ int deserialize(uint8_t** output, uint8_t* input, int input_len)
                     return 0;
                 }
                 issuer[0] = 'r';
-
                 char currency[41];
                 if (ascii)
                 {
@@ -573,10 +674,8 @@ int deserialize(uint8_t** output, uint8_t* input, int input_len)
                         currency[i*2+1] = (char)lo;
                     }
                 }
-
                 int32_t exp = (int32_t)(exponent);
                 exp -= 97;
-
                 append(APPENDNOINDENT, SBUF("{\n"));
                 snprintf(str, 1024, "\tAmount: \"%s%lluE%d\",\n", (is_neg ? "-" : ""), mantissa, exp);
                 append(APPENDPARAMS, str, 1024);
@@ -587,20 +686,15 @@ int deserialize(uint8_t** output, uint8_t* input, int input_len)
                 append(APPENDNOINDENT, SBUF(issuer));
                 append(APPENDNOINDENT, SBUF("\"\n"));
                 append(APPENDPARAMS, SBUF("}"));
-
                 ADVANCE(48);
             }
             else
             {
-
                 REQUIRE(7);
-                // xrp (drops) currency
                 char str[24];
                 char* s = str;
-                // handle negative sign bit
                 if ((*n) >> 6U == 0)
                     *s++ = '-';
-            
                 uint64_t number =  
                     ((uint64_t)((*n) & 0b111111U) << 56U) + 
                     ((uint64_t)(*(n+1)) << 48U) + 
@@ -610,13 +704,8 @@ int deserialize(uint8_t** output, uint8_t* input, int input_len)
                     ((uint64_t)(*(n+5)) << 16U) + 
                     ((uint64_t)(*(n+6)) <<  8U) + 
                     ((uint64_t)(*(n+7)) <<  0U);
-               
                 snprintf(s, 23, "%llu", number); 
-           
-                
-
                 append(APPENDNOINDENT, str, 16);
-
                 ADVANCE(8);
             }
         }
