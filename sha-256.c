@@ -1,3 +1,7 @@
+/*
+ * This code is from https://github.com/amosnier/sha-2 author: @amosnier Alain Mosnier, jan2000
+ */
+
 #include <stdint.h>
 #include <string.h>
 #include <stdbool.h>
