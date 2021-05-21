@@ -123,7 +123,7 @@ int deserialize(uint8_t** output, uint8_t* input, int input_len)
     append(APPENDPARAMS, SBUF("{\n"));
 
     indent_level++;
-    int nocomma = 0;
+    int nocomma = 1;
     while (remaining >= 0)
     {
 
@@ -138,10 +138,6 @@ int deserialize(uint8_t** output, uint8_t* input, int input_len)
             return 0;
         }
 
-        if (n != input && !nocomma)
-            append(APPENDNOINDENT, SBUF(",\n"));
-
-        nocomma = 0;
 
 
         int field_code = -1;
@@ -193,6 +189,17 @@ int deserialize(uint8_t** output, uint8_t* input, int input_len)
             field_code = (*n & 0xFU);
             n++; remaining--;
         }
+        
+
+        int end_of_array = (parent_is_array & 1 && (type_code == 14 || type_code == 15) && field_code == 1);
+
+        if (n != input && !nocomma && !end_of_array)
+            append(APPENDNOINDENT, SBUF(",\n"));
+
+        if (end_of_array)
+            append(APPENDNOINDENT, SBUF("\n"));
+
+        nocomma = 0;
 
         if (type_code == 0)
         {
