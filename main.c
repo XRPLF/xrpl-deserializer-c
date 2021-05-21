@@ -108,18 +108,32 @@ int deserialize(uint8_t** output, uint8_t* input, int input_len)
     int remaining = input_len - 1;
     uint8_t* n = input;
 
-    int obj_depth = 0;
-    int array_depth = 0;
+    int object_level = 0;
+    int array_level = 0;
 
     int indent_level = 0;
     append(APPENDPARAMS, SBUF("{\n"));
 
     indent_level++;
-    while (remaining > 0)
+    int nocomma = 0;
+    while (remaining >= 0)
     {
 
-        if (n != input)
+        if (array_level < 0)
+        {
+            fprintf(stderr, "More close arrays than open arrays! at %d\n", upto);
+            return 0;
+        }
+        if (object_level < 0)
+        {
+            fprintf(stderr, "More close objects than open objects! at %d\n", upto);
+            return 0;
+        }
+
+        if (n != input && !nocomma)
             append(APPENDNOINDENT, SBUF(",\n"));
+
+        nocomma = 0;
 
         int field_code = -1;
         int type_code = -1;
@@ -173,7 +187,8 @@ int deserialize(uint8_t** output, uint8_t* input, int input_len)
 
         if (type_code == 0)
         {
-            fprintf(stderr, "Invalid typecode 0\n");
+            fprintf(stderr, "Invalid typecode 0 at %d\n", upto);
+
             return 0;
         }
 
@@ -394,7 +409,43 @@ int deserialize(uint8_t** output, uint8_t* input, int input_len)
                 (error=1)))))))))))))));                                                                               
                                            */
             // fixed length types including amount
-            if (type_code == 8) // account
+            if (type_code == 18)
+            {
+                // pathset
+            }
+            else if (type_code == 14)
+            {   // object
+                if (field_code == 1)
+                {
+                    indent_level--;
+                    object_level--;
+                    append(APPENDPARAMS, SBUF("}"));
+                }
+                else
+                {
+                    append(APPENDNOINDENT, SBUF("{\n"));
+                    object_level++;
+                    indent_level++;
+                    nocomma = 1;
+                }
+            }
+            else if (type_code == 15)
+            {   // array
+                if (field_code == 1)
+                {
+                    indent_level--;
+                    array_level--;
+                    append(APPENDPARAMS, SBUF("]"));
+                }
+                else
+                {
+                    append(APPENDPARAMS, SBUF("[\n"));
+                    array_level++;
+                    indent_level++;
+                    nocomma = 1;
+                }
+            }
+            else if (type_code == 8) // account
             {
 
              //   printf("upto: %d, remaining: %d\n", upto, remaining);
@@ -408,7 +459,9 @@ int deserialize(uint8_t** output, uint8_t* input, int input_len)
                     return 0;
                 }
                 acc[0] = 'r';
+                append(APPENDNOINDENT, SBUF("\""));
                 append(APPENDNOINDENT, acc, acc_size);
+                append(APPENDNOINDENT, SBUF("\""));
                 ADVANCE(21);
             }
             else if (type_code == 4 || type_code == 5 || type_code == 17)
@@ -482,10 +535,7 @@ int deserialize(uint8_t** output, uint8_t* input, int input_len)
                     exponent >>= 6U;
                     
                     char str[1024];
-                    char* s = str;
-
-                    if (((*n) >> 6U) & 1U == 0)
-                        *s++ = '-';
+                    int is_neg = (((*n) >> 6U) & 1U == 0);
 
                     uint64_t mantissa = 
                         (((uint64_t)((*(n+1) & 0b111111))) << 48U) +
@@ -566,13 +616,16 @@ int deserialize(uint8_t** output, uint8_t* input, int input_len)
                     int32_t exp = (int32_t)(exponent);
                     exp -= 97;
 
-
-                    snprintf(s, 1024, "{\n\tAmount: \"%lluE%d\",\n\tCurrency: \"", mantissa, exp);
-                    append(APPENDNOINDENT, str, 1024);
+                    append(APPENDNOINDENT, SBUF("{\n"));
+                    snprintf(str, 1024, "\tAmount: \"%s%lluE%d\",\n", (is_neg ? "-" : ""), mantissa, exp);
+                    append(APPENDPARAMS, str, 1024);
+                    append(APPENDPARAMS, SBUF("\tCurrency: \""));
                     append(APPENDNOINDENT, SBUF(currency));
-                    append(APPENDNOINDENT, SBUF("\",\n\tIssuer: \""));
+                    append(APPENDNOINDENT, SBUF("\",\n"));
+                    append(APPENDPARAMS, SBUF("\tIssuer: \""));
                     append(APPENDNOINDENT, SBUF(issuer));
-                    append(APPENDNOINDENT, SBUF("\"\n}"));
+                    append(APPENDNOINDENT, SBUF("\"\n"));
+                    append(APPENDPARAMS, SBUF("}"));
 
                     ADVANCE(48);
                 }
@@ -605,32 +658,41 @@ int deserialize(uint8_t** output, uint8_t* input, int input_len)
 
                     ADVANCE(8);
                 }
-
-
-
-                continue;
             }
-
-            if (type_code == 1 || type_code == 2 || type_code == 16) // uint16
+            else if (type_code == 1 || type_code == 2 || type_code == 3 || type_code == 16) // uint16
             {
-                uint32_t number = 0;
+                uint64_t number = 0;
                 if (type_code == 1) // uint16
                 {
                     REQUIRE(1);
-                    number =  (((uint32_t)(*(n+0))) << 8U) + 
-                              (((uint32_t)(*(n+1))) << 0U);
+                    number =  (((uint64_t)(*(n+0))) << 8U) + 
+                              (((uint64_t)(*(n+1))) << 0U);
                     ADVANCE(2);
                 }
                 else if (type_code == 2) // uint32
                 {
                     REQUIRE(3);
                     number = 
-                        (((uint32_t)(*(n+0))) << 24U) +
-                        (((uint32_t)(*(n+1))) << 16U) +
-                        (((uint32_t)(*(n+2))) << 8U ) +
-                        (((uint32_t)(*(n+3))) << 0U );
+                        (((uint64_t)(*(n+0))) << 24U) +
+                        (((uint64_t)(*(n+1))) << 16U) +
+                        (((uint64_t)(*(n+2))) << 8U ) +
+                        (((uint64_t)(*(n+3))) << 0U );
 
                     ADVANCE(4);
+                }
+                else if (type_code == 3) // uint64
+                {
+                    REQUIRE(7);
+                    number = 
+                        (((uint64_t)(*(n+0))) << 56U) +
+                        (((uint64_t)(*(n+1))) << 48U) +
+                        (((uint64_t)(*(n+2))) << 40U ) +
+                        (((uint64_t)(*(n+3))) << 32U ) +
+                        (((uint64_t)(*(n+4))) << 24U) +
+                        (((uint64_t)(*(n+5))) << 16U) +
+                        (((uint64_t)(*(n+6))) << 8U ) +
+                        (((uint64_t)(*(n+7))) << 0U );
+                    ADVANCE(8);
                 }
                 else // uint8
                 {
@@ -640,13 +702,16 @@ int deserialize(uint8_t** output, uint8_t* input, int input_len)
                 char str[16];
                 snprintf(str, 16, "%lu", number);
                 append(APPENDNOINDENT, str, 16);
-                continue;
             }
     }
+
+    
+
     indent_level--;
     append(APPENDNOINDENT, SBUF("\n"));
     append(APPENDPARAMS, SBUF("}\n"));
 
+    return 1;
 }
 
 int main(int argc, char** argv)
