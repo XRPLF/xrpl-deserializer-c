@@ -511,7 +511,15 @@ int deserialize(
         else if (field_id == 0xf0009UL) append(APPENDPARAMS, SBUF("\"Memos\": "));
         else if (field_id == 0xf0010UL) append(APPENDPARAMS, SBUF("\"Majorities\": "));
         else if (field_id == 0xf0011UL) append(APPENDPARAMS, SBUF("\"NegativeUNL\": "));
-
+        else if (field_id == 0xE0001UL || field_id == 0xF0001UL)
+        {
+            // do nothing (end of object/array)
+        }
+        else
+        {
+            fprintf(stderr, "Error: Unknown field_id %05X\n", field_id);
+            break;
+        }
 
         if (type_code == 18)
         {
