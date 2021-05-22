@@ -14,7 +14,7 @@ This code is designed to be highly portable and efficient, therefore only the fo
 ## Running / Examples
 ### Arguments
 ```
-Usage: ./xd < HEXBLOB | hex file | - for stdin >
+Usage: ./xd HEXBLOB | hex file | - (for stdin)
 ```
 
 ### Decode a transaction
