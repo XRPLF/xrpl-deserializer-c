@@ -28,9 +28,9 @@ do
     TEST="`cat $f`"
     RESULT="`../xd $TEST | jq empty 2>&1`"
     if [ -z "$RESULT" ]; then
-        echo "TEST $COUNTER/$COUNT :: PASS"
+        echo "TEST $COUNTER/$COUNT :: PASS :: $f"
     else
-        echo "TEST $COUNTER/$COUNT :: FAIL"
+        echo "TEST $COUNTER/$COUNT :: FAIL :: $f"
         echo "      $RESULT"
         ALLPASS=0
     fi
