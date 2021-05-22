@@ -535,14 +535,14 @@ int deserialize(
 
                 if (path_type & 0x01U)
                 {
-                    REQUIRE(19);
+                    REQUIRE(20);
                     path_type -= 0x01U;
 
                     // account
                     append(APPENDPARAMS, SBUF("\"Account\": \""));
                     char acc[64];
                     size_t acc_size = 64;
-                    if (!b58check_enc(acc, &acc_size, 0, n + 1, 20))
+                    if (!b58check_enc(acc, &acc_size, 0, n, 20))
                     {
                         fprintf(stderr, "Error: could not base58 encode\n");
                         return 0;
@@ -564,7 +564,7 @@ int deserialize(
 
                     append(APPENDPARAMS, SBUF("\"Currency\": \""));
 
-                    REQUIRE(19);
+                    REQUIRE(20);
                     char currency[41];
                     if (is_ascii_currency(n))
                     {
@@ -591,13 +591,13 @@ int deserialize(
                 if (path_type & 0x20U)
                 {
                     // issuer
-                    REQUIRE(19);
+                    REQUIRE(20);
 
                     // account
                     append(APPENDPARAMS, SBUF("\"Issuer\": \""));
                     char acc[64];
                     size_t acc_size = 64;
-                    if (!b58check_enc(acc, &acc_size, 0, n + 1, 20))
+                    if (!b58check_enc(acc, &acc_size, 0, n, 20))
                     {
                         fprintf(stderr, "Error: could not base58 encode\n");
                         return 0;
@@ -668,7 +668,7 @@ int deserialize(
         {
 
          //   printf("upto: %d, remaining: %d\n", upto, remaining);
-            REQUIRE(20);
+            REQUIRE(21);
 
             char acc[64];
             size_t acc_size = 64;
@@ -686,7 +686,7 @@ int deserialize(
         else if (type_code == 4 || type_code == 5 || type_code == 17)
         {
             // uint128, uint256, uint160
-            REQUIRE(size-1);
+            REQUIRE(size);
             
             append(APPENDNOINDENT, SBUF("\""));
             char hexout[513];
@@ -707,20 +707,20 @@ int deserialize(
             else if (field_len <= 12480)
             {
                 // two byte size
-                REQUIRE(1);
+                REQUIRE(2);
                 field_len = 193 + ((field_len - 193) * 256) + *n;
                 ADVANCE(2);
             }
             else
             {
                 // three byte size
-                REQUIRE(2);
+                REQUIRE(3);
                 field_len = 12481 + ((field_len - 241) * 0xFFFFU) + ((*(n+1)) * 256) + *(n+2);
                 ADVANCE(3);
             }
 
             //printf("vl len: %d\n", field_len);
-            REQUIRE(field_len-1);
+            REQUIRE(field_len);
 
             append(APPENDNOINDENT, SBUF("\""));
             char hexout[1024];
@@ -745,7 +745,7 @@ int deserialize(
             if ((*n) >> 7U)
             {
                 size = 48U;
-                REQUIRE(47);
+                REQUIRE(48);
                 uint16_t exponent = (((uint16_t)(*n)) << 8U) +
                                     (uint16_t)(*(n+1));
                 exponent &= 0b0011111111000000;
@@ -804,7 +804,7 @@ int deserialize(
             }
             else
             {
-                REQUIRE(7);
+                REQUIRE(8);
                 char str[24];
                 char* s = str;
                 int l = 0;
@@ -832,14 +832,14 @@ int deserialize(
             uint64_t number = 0;
             if (type_code == 1) // uint16
             {
-                REQUIRE(1);
+                REQUIRE(2);
                 number =  (((uint64_t)(*(n+0))) << 8U) + 
                           (((uint64_t)(*(n+1))) << 0U);
                 ADVANCE(2);
             }
             else if (type_code == 2) // uint32
             {
-                REQUIRE(3);
+                REQUIRE(4);
                 number = 
                     (((uint64_t)(*(n+0))) << 24U) +
                     (((uint64_t)(*(n+1))) << 16U) +
@@ -850,7 +850,7 @@ int deserialize(
             }
             else if (type_code == 3) // uint64
             {
-                REQUIRE(7);
+                REQUIRE(8);
                 number = 
                     (((uint64_t)(*(n+0))) << 56U) +
                     (((uint64_t)(*(n+1))) << 48U) +
@@ -864,6 +864,7 @@ int deserialize(
             }
             else // uint8
             {
+                REQUIRE(1);
                 number = *n;
                 ADVANCE(1);
             }
@@ -977,7 +978,7 @@ int main(int argc, char** argv)
     if (hexlen % 2 == 1)
         return fprintf(stderr, "Hex length must be even\n");
 
-    int len = hexlen/2;
+    int len = hexlen/2 + 1;
     uint8_t* rawbytes = malloc(len);
     uint8_t* rawupto = rawbytes;
     int error = 0;
@@ -998,6 +999,7 @@ int main(int argc, char** argv)
 
         *rawupto++ = (hi << 4U) + lo;
     }
+    *rawupto++ = 0; // hacky :(
 
     if (error)
         return fprintf(stderr, "Non-hex nibble detected\n");
