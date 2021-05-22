@@ -16,10 +16,14 @@
 
 #define DEFAULT_SIZE (2048*1024)
 
+#define DEBUG 0
+
 int append(int indent_level, uint8_t** output, int* upto, int* len, uint8_t* append, int append_len)
 {
 
-//    printf("append: `%s`\n", append);
+    if (DEBUG)
+        printf("append: `%s`\n", append);
+    
     if (*len - *upto < append_len + 1 + indent_level)
     {
         *len *= 2;
@@ -96,8 +100,6 @@ int is_ascii_currency(uint8_t* y)
             return 0;
     return 1;
 }
-
-#define PARSE_CURRENCY()\
 
 
 int deserialize(uint8_t** output, uint8_t* input, int input_len)
@@ -191,12 +193,15 @@ int deserialize(uint8_t** output, uint8_t* input, int input_len)
         }
         
 
-        int end_of_array = (parent_is_array & 1 && (type_code == 14 || type_code == 15) && field_code == 1);
+        int end_of_object = ((type_code == 14 || type_code == 15) && field_code == 1);
+        
+        int end_of_array = (parent_is_array & 1 && end_of_object);
 
-        if (n != input && !nocomma && !end_of_array)
+
+        if (n != input && !nocomma && !end_of_array && !end_of_object)
             append(APPENDNOINDENT, SBUF(",\n"));
 
-        if (end_of_array)
+        if (end_of_array || end_of_object)
             append(APPENDNOINDENT, SBUF("\n"));
 
         nocomma = 0;
@@ -236,7 +241,8 @@ int deserialize(uint8_t** output, uint8_t* input, int input_len)
 
         uint32_t field_id = (type_code << 16U) + field_code;
 
-//        printf("field_id: %llx\n", field_id);
+        if (DEBUG)
+            printf("field_id: %llx\n", field_id);
         
         if (parent_is_array & 1 && !((type_code == 14 || type_code == 15) && field_code == 1))
         {
@@ -414,7 +420,7 @@ int deserialize(uint8_t** output, uint8_t* input, int input_len)
 
         if (type_code == 18)
         {
-            append(APPENDPARAMS, SBUF("[\n"));
+            append(APPENDNOINDENT, SBUF("[\n"));
             indent_level++;
             append(APPENDPARAMS, SBUF("{\n"));
             indent_level++;
@@ -546,6 +552,12 @@ int deserialize(uint8_t** output, uint8_t* input, int input_len)
                 array_level--;
                 append(APPENDPARAMS, SBUF("]"));
                 parent_is_array >>= 1U;
+                if (parent_is_array & 1)
+                {
+                    indent_level--;
+                    append(APPENDNOINDENT, SBUF("\n"));
+                    append(APPENDPARAMS, SBUF("}"));
+                }
             }
             else
             {
@@ -765,7 +777,6 @@ int deserialize(uint8_t** output, uint8_t* input, int input_len)
     
 
     indent_level--;
-    append(APPENDNOINDENT, SBUF("\n"));
     append(APPENDPARAMS, SBUF("}\n"));
 
     return 1;
