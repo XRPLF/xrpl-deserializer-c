@@ -9,8 +9,13 @@
 #include <stdlib.h>
 #include <stdint.h>
 #include <string.h>
-
+#include <pthread.h>
+#include <sys/ioctl.h>
+#include <unistd.h>
 #include "libbase58.h"
+#include <sys/types.h>
+#include <sys/stat.h>
+#include <fcntl.h>
 
 #include "sha-256.h"
 
@@ -18,12 +23,27 @@
 
 #define DEBUG 0
 
-int append(int indent_level, uint8_t** output, int* upto, int* len, uint8_t* append, int append_len)
+int append(int indent_level, uint8_t** output, int* upto, int* len, int write_fd, uint8_t* append, int append_len)
 {
 
     if (DEBUG)
         printf("append: `%s`\n", append);
-    
+
+    // stream mode
+    if (write_fd)
+    {
+        char tab[1] = {'\t'};
+        for (int i = 0; i < indent_level; ++i)
+            if (write(write_fd, tab, 1) <= 0)
+                return 0;
+       
+        int l = strnlen(append, append_len); 
+        if (write(write_fd, append, l) < l)
+            return 0;
+
+        return 1;
+    }
+
     if (*len - *upto < append_len + 1 + indent_level)
     {
         *len *= 2;
@@ -46,21 +66,59 @@ int append(int indent_level, uint8_t** output, int* upto, int* len, uint8_t* app
 }
 
 #define SBUF(x) x,sizeof(x)
-#define APPENDPARAMS indent_level, output, &upto, &len
-#define APPENDNOINDENT 0, output, &upto, &len
+#define APPENDPARAMS indent_level, output, &upto, &len, write_fd
+#define APPENDNOINDENT 0, output, &upto, &len, write_fd
 
-#define REQUIRE(b)\
+#define _REQUIRE(b,suppress)\
 {\
-    if (remaining < (b))\
+    if (DEBUG) printf("\nREQUIRE CALLED AT LINE %d FOR %d bytes, remaining = %d\n", __LINE__, (b), remaining);\
+    if (remaining < (b) && !(!fetch_data_func && suppress))\
     {\
-        fprintf(stderr, "Error: expecting %d nibbles at nibble %d but input was short (only %d remain) code line %d\n", (b)*2, upto*2, remaining * 2,  __LINE__);\
-        return 0;\
+        if (!fetch_data_func)\
+            break;\
+        int upto = n - input;\
+        if (input_len - upto - remaining < 0)\
+        {\
+            fprintf(stderr, "Error: remaining past end of input len, maybe overlarge vl blob in input?\n");\
+            exit(1);\
+        }\
+        int needed = 0;\
+        do\
+        {\
+            needed = (b) - remaining;\
+            if (needed < 0) needed = 0;\
+            int bytes_read = (*fetch_data_func)(input + upto + remaining, input_len - upto - remaining, needed, read_fd);\
+            if (bytes_read < 0)\
+            {\
+                if (!suppress)\
+                    fprintf(stderr, "Error: expecting %d nibbles at nibble %d but input was short (only %d remain) code line %d\n", (b)*2, upto*2, remaining * 2,  __LINE__);\
+                break;\
+            }\
+            remaining += bytes_read;\
+        } while(remaining < (b));\
     }\
 }
+/*
+    printf("\n");\
+    for (int i = 0; i < (n - input) + remaining; ++i)\
+        printf("%02X ", input[i]);\
+    printf("\n");\
+*/
+
+#define REQUIRE(b) _REQUIRE(b,0)
 
 #define ADVANCE(x)\
 {\
+    if (fetch_data_func)\
+        REQUIRE(x);\
     n += (x); remaining -= (x);\
+    int upto = n - input;\
+    if (fetch_data_func &&\
+        upto > input_len / 2)\
+    {\
+        memcpy(input, n, remaining);\
+        n = input;\
+    }\
 }
 
 #define HEX(out_raw, in_raw, len_raw)\
@@ -102,17 +160,39 @@ int is_ascii_currency(uint8_t* y)
 }
 
 
-int deserialize(uint8_t** output, uint8_t* input, int input_len)
+int deserialize(
+        uint8_t** output,
+        uint8_t* input,
+        int input_len, 
+        int (*fetch_data_func)(uint8_t*, int, int, int), // may be null, refills the input buffer with whatever is available
+        int read_fd,    // may be 0 if unused, the fd to pass to fetch_data_func (if applicable)
+        int write_fd)   // may be 0 if unused, the fd to write output to, if not specified then *output buffer is used
 {
 
-    
+    int remaining = input_len - 1;
+    if (input == 0)
+    {
+
+        // stream mode
+        //
+        if (!fetch_data_func)
+        {
+            fprintf(stderr, "Error: fetch_data_func function ptr must be supplied in stream mode\n");
+            return 1;
+        }
+        input_len = DEFAULT_SIZE;
+        input = malloc(DEFAULT_SIZE);
+        remaining = (*fetch_data_func)(input, input_len, 1, read_fd);
+    }
+
     int len = DEFAULT_SIZE;
-    *output = malloc(len);
+    if (output)
+    {
+        *output = malloc(len);
+    }
     int upto = 0;
 
-    int remaining = input_len - 1;
     uint8_t* n = input;
-
     int object_level = 0;
     int array_level = 0;
     int indent_level = 0;
@@ -126,8 +206,17 @@ int deserialize(uint8_t** output, uint8_t* input, int input_len)
 
     indent_level++;
     int nocomma = 1;
-    while (remaining >= 0)
+
+
+    while (1)
     {
+    
+        if (fetch_data_func)
+        {
+            _REQUIRE(1, 1);
+            if (remaining == 0)
+                break;
+        }    
 
         if (array_level < 0)
         {
@@ -140,13 +229,12 @@ int deserialize(uint8_t** output, uint8_t* input, int input_len)
             return 0;
         }
 
-
-
         int field_code = -1;
         int type_code = -1;
 
         if (n == 0)
         {
+            REQUIRE(3);
             // 3 byte header
             if (remaining < 2)
             {
@@ -156,11 +244,11 @@ int deserialize(uint8_t** output, uint8_t* input, int input_len)
 
             type_code = *(n+1);
             field_code = *(n+2);
-            n += 3; remaining -= 3;
-
+            ADVANCE(3);
         }
         else if ((*n >> 4U) == 0)
         {
+            REQUIRE(2);
             // 2 byte header (typecode >= 16 && field code < 16)
             if (remaining < 1)
             {
@@ -169,10 +257,11 @@ int deserialize(uint8_t** output, uint8_t* input, int input_len)
             }
             field_code = (*n & 0xFU);
             type_code = *(n+1);
-            n += 2; remaining -= 2;
+            ADVANCE(2);
         }
         else if ((*n & 0xFU) == 0)
         {
+            REQUIRE(2);
             // 2 byte header (typecode < 16 && field code >= 16)
             if (remaining < 1)
             {
@@ -181,7 +270,7 @@ int deserialize(uint8_t** output, uint8_t* input, int input_len)
             }
             type_code = (*n >> 4U);
             field_code = *(n+1);
-            n += 2; remaining -= 2;
+            ADVANCE(2);
         }
         else
         {
@@ -189,21 +278,27 @@ int deserialize(uint8_t** output, uint8_t* input, int input_len)
 
             type_code = (*n >> 4U);
             field_code = (*n & 0xFU);
-            n++; remaining--;
+            ADVANCE(1);
         }
-        
+       
 
         int end_of_object = ((type_code == 14 || type_code == 15) && field_code == 1);
         
         int end_of_array = (parent_is_array & 1 && end_of_object);
 
 
-        if (n != input && !nocomma && !end_of_array && !end_of_object)
+        if (!nocomma && !end_of_array && !end_of_object)
             append(APPENDNOINDENT, SBUF(",\n"));
 
         if (end_of_array || end_of_object)
             append(APPENDNOINDENT, SBUF("\n"));
 
+        if (DEBUG)
+            printf("end of array: %d, end of object %d\n", end_of_array, end_of_object);
+
+        if (!end_of_object && !end_of_array)
+            _REQUIRE(1,1); 
+        
         nocomma = 0;
 
         if (type_code == 0)
@@ -624,7 +719,7 @@ int deserialize(uint8_t** output, uint8_t* input, int input_len)
                 ADVANCE(3);
             }
 
-//                printf("vl len: %d\n", field_len);
+            //printf("vl len: %d\n", field_len);
             REQUIRE(field_len-1);
 
             append(APPENDNOINDENT, SBUF("\""));
@@ -712,8 +807,12 @@ int deserialize(uint8_t** output, uint8_t* input, int input_len)
                 REQUIRE(7);
                 char str[24];
                 char* s = str;
+                int l = 0;
                 if ((*n) >> 6U == 0)
+                {
                     *s++ = '-';
+                    l++;
+                }
                 uint64_t number =  
                     ((uint64_t)((*n) & 0b111111U) << 56U) + 
                     ((uint64_t)(*(n+1)) << 48U) + 
@@ -723,8 +822,8 @@ int deserialize(uint8_t** output, uint8_t* input, int input_len)
                     ((uint64_t)(*(n+5)) << 16U) + 
                     ((uint64_t)(*(n+6)) <<  8U) + 
                     ((uint64_t)(*(n+7)) <<  0U);
-                snprintf(s, 23, "%llu", number); 
-                append(APPENDNOINDENT, str, 16);
+                l += snprintf(s, 23, "%llu", number); 
+                append(APPENDNOINDENT, str, l);
                 ADVANCE(8);
             }
         }
@@ -769,8 +868,8 @@ int deserialize(uint8_t** output, uint8_t* input, int input_len)
                 ADVANCE(1);
             }
             char str[16];
-            snprintf(str, 16, "%lu", number);
-            append(APPENDNOINDENT, str, 16);
+            int l = snprintf(str, 16, "%lu", number);
+            append(APPENDNOINDENT, str, l);
         }
     }
 
@@ -783,11 +882,94 @@ int deserialize(uint8_t** output, uint8_t* input, int input_len)
     return 1;
 }
 
+
+int stream_refill(uint8_t* input, int input_len, int min_bytes_to_return, int read_fd)
+{
+    int upto = 0;
+    char byte[2];
+    int bytes_read = 0;
+    do
+    {
+//        printf("\n  A:\n");
+        bytes_read = read(read_fd, &(byte[0]), 1);
+        if (bytes_read > 0)
+        {
+            if (byte[0] == ' ' || byte[0] == '\n' || byte[0] == '\r' || byte[0] == '\t')
+                continue;
+        }
+        else
+            break;
+        
+        half_continue:
+//        printf("\n  B:\n");
+        bytes_read = read(read_fd, &(byte[1]), 1);
+        if (bytes_read > 0)
+        {
+            if (byte[1] == ' ' || byte[1] == '\n' || byte[1] == '\r' || byte[1] == '\t')
+                goto half_continue;
+        }
+        else
+            break;
+
+        // execution to here means two bytes
+        
+        uint8_t hi = byte[0];
+        uint8_t lo = byte[1];
+
+        int error = 0;
+        hi =    (hi >= 'A' && hi <= 'F' ? hi - 'A' + 10 :
+                (hi >= 'a' && hi <= 'f' ? hi - 'a' + 10 : 
+                (hi >= '0' && hi <= '9' ? hi - '0' :
+                 (error=1) )));
+    
+        lo =    (lo >= 'A' && lo <= 'F' ? lo - 'A' + 10 :
+                (lo >= 'a' && lo <= 'f' ? lo - 'a' + 10 : 
+                (lo >= '0' && lo <= '9' ? lo - '0' :
+                 (error=1) )));
+
+
+        if (error)
+        {
+            fprintf(stderr, "Error: Garbage (non hex and non whitespace characters) in input stream\n");
+            exit(1);
+        }
+
+        input[upto++] = (hi << 4U) + lo;
+    }
+    while (upto < min_bytes_to_return);
+
+    //printf("upto: %d bytes read: %d\n", upto, bytes_read);
+    if (bytes_read<= 0 && upto == 0)
+        return -1;
+
+    return upto;
+}
+
 int main(int argc, char** argv)
 {
     b58_sha256_impl = calc_sha_256;
-    if (argc != 2)
-        return fprintf(stderr, "Usage: %s <HEX BLOB>\n", argv[0]);
+    
+    int print_help =
+        (argc != 2) ||
+        (argc == 2 && (strcmp(argv[1], "--help") == 0));
+
+    if (print_help)
+        return fprintf(stderr, "Usage: %s < HEXBLOB | hex file | - for stdin >\n", argv[0]);
+
+    if (strcmp(argv[1], "-") == 0)
+    {
+        // stream mode
+        return deserialize(0, 0, 0, stream_refill, 0, 1);
+    }
+    struct stat dummy;
+    if (lstat(argv[1], &dummy) != -1)
+    {
+        // stream mode but from file
+        int fd = open(argv[1], O_RDONLY);
+        if (fd < 0)
+            return fprintf(stderr, "Could not open file `%s`\n", argv[1]);
+        return deserialize(0, 0, 0, stream_refill, fd, 1);
+    }
 
 
     // hex conversion
@@ -821,7 +1003,7 @@ int main(int argc, char** argv)
         return fprintf(stderr, "Non-hex nibble detected\n");
 
     uint8_t* output = 0;
-    if (!deserialize(&output, rawbytes, len))
+    if (!deserialize(&output, rawbytes, len, 0, 0, 0))
         return fprintf(stderr, "Could not deserialize\n");
 
     printf("%s\n", output);
