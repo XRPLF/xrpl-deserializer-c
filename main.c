@@ -777,6 +777,7 @@ int deserialize(uint8_t** output, uint8_t* input, int input_len)
     
 
     indent_level--;
+    append(APPENDNOINDENT, SBUF("\n"));
     append(APPENDPARAMS, SBUF("}\n"));
 
     return 1;
