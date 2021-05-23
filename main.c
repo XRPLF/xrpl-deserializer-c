@@ -844,6 +844,38 @@ int deserialize(
                 number =  (((uint64_t)(*(n+0))) << 8U) + 
                           (((uint64_t)(*(n+1))) << 0U);
                 ADVANCE(2);
+
+                int skip_print = 1;
+                if (number == 21) append(APPENDNOINDENT, SBUF("\"AccountDelete\""));
+                else if (number == 3) append(APPENDNOINDENT, SBUF("\"AccountSet\""));
+                else if (number == 18) append(APPENDNOINDENT, SBUF("\"CheckCancel\""));
+                else if (number == 17) append(APPENDNOINDENT, SBUF("\"CheckCash\""));
+                else if (number == 16) append(APPENDNOINDENT, SBUF("\"CheckCreate\""));
+                else if (number == 9) append(APPENDNOINDENT, SBUF("\"Contract\""));
+                else if (number == 19) append(APPENDNOINDENT, SBUF("\"DepositPreauth\""));
+                else if (number == 100) append(APPENDNOINDENT, SBUF("\"EnableAmendment\""));
+                else if (number == 4) append(APPENDNOINDENT, SBUF("\"EscrowCancel\""));
+                else if (number == 1) append(APPENDNOINDENT, SBUF("\"EscrowCreate\""));
+                else if (number == 2) append(APPENDNOINDENT, SBUF("\"EscrowFinish\""));
+                else if (number == 6) append(APPENDNOINDENT, SBUF("\"NickNameSet\""));
+                else if (number == 8) append(APPENDNOINDENT, SBUF("\"OfferCancel\""));
+                else if (number == 7) append(APPENDNOINDENT, SBUF("\"OfferCreate\""));
+                else if (number == 0) append(APPENDNOINDENT, SBUF("\"Payment\""));
+                else if (number == 15) append(APPENDNOINDENT, SBUF("\"PaymentChannelClaim\""));
+                else if (number == 13) append(APPENDNOINDENT, SBUF("\"PaymentChannelCreate\""));
+                else if (number == 14) append(APPENDNOINDENT, SBUF("\"PaymentChannelFund\""));
+                else if (number == 101) append(APPENDNOINDENT, SBUF("\"SetFee\""));
+                else if (number == 5) append(APPENDNOINDENT, SBUF("\"SetRegularKey\""));
+                else if (number == 12) append(APPENDNOINDENT, SBUF("\"SignerListSet\""));
+                else if (number == 11) append(APPENDNOINDENT, SBUF("\"TicketCancel\""));
+                else if (number == 10) append(APPENDNOINDENT, SBUF("\"TicketCreate\""));
+                else if (number == 20) append(APPENDNOINDENT, SBUF("\"TrustSet\""));
+                else if (number == 102) append(APPENDNOINDENT, SBUF("\"UNLModify\""));
+                else
+                    skip_print = 0;
+
+                if (skip_print)
+                    continue;
             }
             else if (type_code == 2) // uint32
             {
@@ -875,6 +907,53 @@ int deserialize(
                 REQUIRE(1);
                 number = *n;
                 ADVANCE(1);
+
+                int skip_print = 1;
+
+                if (number == 100) append(APPENDNOINDENT, SBUF("\"tecCLAIM\""));
+                else if (number == 146) append(APPENDNOINDENT, SBUF("\"tecCRYPTOCONDITION_ERROR\""));
+                else if (number == 121) append(APPENDNOINDENT, SBUF("\"tecDIR_FULL\""));
+                else if (number == 143) append(APPENDNOINDENT, SBUF("\"tecDST_TAG_NEEDED\""));
+                else if (number == 149) append(APPENDNOINDENT, SBUF("\"tecDUPLICATE\""));
+                else if (number == 148) append(APPENDNOINDENT, SBUF("\"tecEXPIRED\""));
+                else if (number == 105) append(APPENDNOINDENT, SBUF("\"tecFAILED_PROCESSING\""));
+                else if (number == 137) append(APPENDNOINDENT, SBUF("\"tecFROZEN\""));
+                else if (number == 151) append(APPENDNOINDENT, SBUF("\"tecHAS_OBLIGATIONS\""));
+                else if (number == 136) append(APPENDNOINDENT, SBUF("\"tecINSUFF_FEE\""));
+                else if (number == 141) append(APPENDNOINDENT, SBUF("\"tecINSUFFICIENT_RESERVE\""));
+                else if (number == 122) append(APPENDNOINDENT, SBUF("\"tecINSUF_RESERVE_LINE\""));
+                else if (number == 123) append(APPENDNOINDENT, SBUF("\"tecINSUF_RESERVE_OFFER\""));
+                else if (number == 144) append(APPENDNOINDENT, SBUF("\"tecINTERNAL\""));
+                else if (number == 147) append(APPENDNOINDENT, SBUF("\"tecINVARIANT_FAILED\""));
+                else if (number == 150) append(APPENDNOINDENT, SBUF("\"tecKILLED\""));
+                else if (number == 142) append(APPENDNOINDENT, SBUF("\"tecNEED_MASTER_KEY\""));
+                else if (number == 130) append(APPENDNOINDENT, SBUF("\"tecNO_ALTERNATIVE_KEY\""));
+                else if (number == 134) append(APPENDNOINDENT, SBUF("\"tecNO_AUTH\""));
+                else if (number == 124) append(APPENDNOINDENT, SBUF("\"tecNO_DST\""));
+                else if (number == 125) append(APPENDNOINDENT, SBUF("\"tecNO_DST_INSUF_XRP\""));
+                else if (number == 140) append(APPENDNOINDENT, SBUF("\"tecNO_ENTRY\""));
+                else if (number == 133) append(APPENDNOINDENT, SBUF("\"tecNO_ISSUER\""));
+                else if (number == 135) append(APPENDNOINDENT, SBUF("\"tecNO_LINE\""));
+                else if (number == 126) append(APPENDNOINDENT, SBUF("\"tecNO_LINE_INSUF_RESERVE\""));
+                else if (number == 127) append(APPENDNOINDENT, SBUF("\"tecNO_LINE_REDUNDANT\""));
+                else if (number == 139) append(APPENDNOINDENT, SBUF("\"tecNO_PERMISSION\""));
+                else if (number == 131) append(APPENDNOINDENT, SBUF("\"tecNO_REGULAR_KEY\""));
+                else if (number == 138) append(APPENDNOINDENT, SBUF("\"tecNO_TARGET\""));
+                else if (number == 145) append(APPENDNOINDENT, SBUF("\"tecOVERSIZE\""));
+                else if (number == 132) append(APPENDNOINDENT, SBUF("\"tecOWNERS\""));
+                else if (number == 128) append(APPENDNOINDENT, SBUF("\"tecPATH_DRY\""));
+                else if (number == 101) append(APPENDNOINDENT, SBUF("\"tecPATH_PARTIAL\""));
+                else if (number == 152) append(APPENDNOINDENT, SBUF("\"tecTOO_SOON\""));
+                else if (number == 129) append(APPENDNOINDENT, SBUF("\"tecUNFUNDED\""));
+                else if (number == 102) append(APPENDNOINDENT, SBUF("\"tecUNFUNDED_ADD\""));
+                else if (number == 103) append(APPENDNOINDENT, SBUF("\"tecUNFUNDED_OFFER\""));
+                else if (number == 104) append(APPENDNOINDENT, SBUF("\"tecUNFUNDED_PAYMENT\""));
+                else if (number == 0) append(APPENDNOINDENT, SBUF("\"tesSUCCESS\""));
+                else
+                    skip_print = 1;
+
+                if (skip_print)
+                    continue;
             }
             char str[16];
             int l = snprintf(str, 16, "%lu", number);
