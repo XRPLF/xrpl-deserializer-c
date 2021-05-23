@@ -69,6 +69,7 @@ int append(int indent_level, uint8_t** output, int* upto, int* len, int write_fd
 #define APPENDPARAMS indent_level, output, &upto, &len, write_fd
 #define APPENDNOINDENT 0, output, &upto, &len, write_fd
 
+
 #define _REQUIRE(b,suppress)\
 {\
     if (DEBUG) printf("\nREQUIRE CALLED AT LINE %d FOR %d bytes, remaining = %d\n", __LINE__, (b), remaining);\
@@ -135,6 +136,69 @@ int append(int indent_level, uint8_t** output, int* upto, int* len, int write_fd
         out[i*2+0] = (char)hi;\
         out[i*2+1] = (char)lo;\
     }\
+}
+
+#define SHORTCHECK() ;/* if (upto >= len) return -1;*/
+int to_fixed_point(uint8_t* outbuf, int len, uint64_t mantissa, int64_t exponent, int negative)
+{
+    int upto = 0;
+    char digits[17];
+    int digitcount = snprintf(digits, 17, "%llu", mantissa);
+    int digitupto = 0;
+    int point = exponent + digitcount;
+
+    int printed_point = 0;
+
+    outbuf[upto++] = '"';
+    SHORTCHECK();
+    if (negative)
+    {
+        outbuf[upto++] = '-';
+        SHORTCHECK();
+    }
+    
+    for (; point > 0; --point)
+    {
+        outbuf[upto++] = (digitupto >= digitcount ? '0' : digits[digitupto++]);
+        SHORTCHECK();
+    }
+    
+    if (digitupto < digitcount)
+    {
+        if (digitupto == 0)
+        {
+            outbuf[upto++] = '0';
+            SHORTCHECK();
+        }
+    
+        outbuf[upto++] = '.';
+        SHORTCHECK();
+
+        printed_point = 1;
+    
+        for (; point < 0; ++point)
+        {
+            outbuf[upto++] = '0';
+            SHORTCHECK();
+        }
+        while (digitupto < digitcount)
+        {
+            outbuf[upto++] = (digitupto >= digitcount ? '0' : digits[digitupto++]);
+            SHORTCHECK();
+        }
+    }
+
+    // backtrack any trailing zeros
+    if (printed_point)
+        for (; outbuf[upto-1] == '0'; --upto);
+
+    outbuf[upto++] = '"';
+    SHORTCHECK();
+
+    outbuf[upto++] = '\0';
+
+
+    return upto;
 }
 
 int is_ascii_currency(uint8_t* y)
@@ -799,8 +863,17 @@ int deserialize(
                 int32_t exp = (int32_t)(exponent);
                 exp -= 97;
                 append(APPENDNOINDENT, SBUF("{\n"));
-                snprintf(str, 1024, "\t\"value\": \"%s%lluE%d\",\n", (is_neg ? "-" : ""), mantissa, exp);
-                append(APPENDPARAMS, str, 1024);
+//                snprintf(str, 1024, "\t\"value\": \"%s%lluE%d\",\n", (is_neg ? "-" : ""), mantissa, exp);
+                {
+                    uint8_t fixed[128];
+                    
+                    if (to_fixed_point(fixed, 128, mantissa, exp, is_neg) == -1)
+                        return fprintf(stderr, "Error: could not convert mantissa/exp to fixed point %lluE%d\n", mantissa, exp);
+
+                    snprintf(str, 1024, "\t\"value\": %s,\n", fixed);
+                    append(APPENDPARAMS, str, 1024);
+                }
+
                 append(APPENDPARAMS, SBUF("\t\"currency\": \""));
                 append(APPENDNOINDENT, SBUF(currency));
                 append(APPENDNOINDENT, SBUF("\",\n"));
