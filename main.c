@@ -799,12 +799,12 @@ int deserialize(
                 int32_t exp = (int32_t)(exponent);
                 exp -= 97;
                 append(APPENDNOINDENT, SBUF("{\n"));
-                snprintf(str, 1024, "\t\"Amount\": \"%s%lluE%d\",\n", (is_neg ? "-" : ""), mantissa, exp);
+                snprintf(str, 1024, "\t\"value\": \"%s%lluE%d\",\n", (is_neg ? "-" : ""), mantissa, exp);
                 append(APPENDPARAMS, str, 1024);
-                append(APPENDPARAMS, SBUF("\t\"Currency\": \""));
+                append(APPENDPARAMS, SBUF("\t\"currency\": \""));
                 append(APPENDNOINDENT, SBUF(currency));
                 append(APPENDNOINDENT, SBUF("\",\n"));
-                append(APPENDPARAMS, SBUF("\t\"Issuer\": \""));
+                append(APPENDPARAMS, SBUF("\t\"issuer\": \""));
                 append(APPENDNOINDENT, SBUF(issuer));
                 append(APPENDNOINDENT, SBUF("\"\n"));
                 append(APPENDPARAMS, SBUF("}"));
@@ -814,13 +814,7 @@ int deserialize(
             {
                 REQUIRE(8);
                 char str[24];
-                char* s = str;
-                int l = 0;
-                if ((*n) >> 6U == 0)
-                {
-                    *s++ = '-';
-                    l++;
-                }
+                int negative =  ((*n) >> 6U == 0);
                 uint64_t number =  
                     ((uint64_t)((*n) & 0b111111U) << 56U) + 
                     ((uint64_t)(*(n+1)) << 48U) + 
@@ -830,7 +824,7 @@ int deserialize(
                     ((uint64_t)(*(n+5)) << 16U) + 
                     ((uint64_t)(*(n+6)) <<  8U) + 
                     ((uint64_t)(*(n+7)) <<  0U);
-                l += snprintf(s, 23, "%llu", number); 
+                int l = snprintf(str, 23, "\"%s%llu\"", (negative ? "-" : ""), number); 
                 append(APPENDNOINDENT, str, l);
                 ADVANCE(8);
             }
