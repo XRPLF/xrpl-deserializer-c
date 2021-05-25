@@ -589,10 +589,10 @@ int deserialize(
         {
             append(APPENDNOINDENT, SBUF("[\n"));
             indent_level++;
-            append(APPENDPARAMS, SBUF("{\n"));
+            append(APPENDPARAMS, SBUF("[\n"));
             indent_level++;
 
-            while (1)
+            for (int path_count = 0; 1; ++path_count)
             {
                 uint8_t path_type = *n;
                 ADVANCE(1);
@@ -603,7 +603,26 @@ int deserialize(
 
                 
                 if (path_type == 0xFFU)
+                {
+                    append(APPENDNOINDENT, SBUF("\n"));
+                    indent_level--;
+                    append(APPENDPARAMS, SBUF("],\n"));
+                    append(APPENDPARAMS, SBUF("[\n"));
+                    indent_level++;
+                    path_count = -1;
                     continue;
+                }
+
+                if (path_count > 0)
+                    append(APPENDNOINDENT, SBUF(",\n"));
+
+                append(APPENDPARAMS, SBUF("{\n"));
+                indent_level++;
+
+                char path_type_str[128];
+                int l = snprintf(path_type_str, 128, "\"type\": %d,\n", path_type);
+                append(APPENDPARAMS, path_type_str, l);
+
 
                 if (path_type & 0x01U)
                 {
@@ -611,7 +630,7 @@ int deserialize(
                     path_type -= 0x01U;
 
                     // account
-                    append(APPENDPARAMS, SBUF("\"Account\": \""));
+                    append(APPENDPARAMS, SBUF("\"account\": \""));
                     char acc[64];
                     size_t acc_size = 64;
                     if (!b58check_enc(acc, &acc_size, 0, n, 20))
@@ -634,7 +653,7 @@ int deserialize(
                     // currency
                     path_type -= 0x10U;
 
-                    append(APPENDPARAMS, SBUF("\"Currency\": \""));
+                    append(APPENDPARAMS, SBUF("\"currency\": \""));
 
                     REQUIRE(20);
                     char currency[41];
@@ -666,7 +685,7 @@ int deserialize(
                     REQUIRE(20);
 
                     // account
-                    append(APPENDPARAMS, SBUF("\"Issuer\": \""));
+                    append(APPENDPARAMS, SBUF("\"issuer\": \""));
                     char acc[64];
                     size_t acc_size = 64;
                     if (!b58check_enc(acc, &acc_size, 0, n, 20))
@@ -679,10 +698,14 @@ int deserialize(
                     append(APPENDNOINDENT, SBUF("\"\n"));
                     ADVANCE(20);
                 }
+
+                indent_level--;
+                append(APPENDPARAMS, SBUF("}"));
+
             }
-        
+            append(APPENDNOINDENT, SBUF("\n"));
             indent_level--;
-            append(APPENDPARAMS, SBUF("}\n"));
+            append(APPENDPARAMS, SBUF("]\n"));
             indent_level--;
             append(APPENDPARAMS, SBUF("]\n"));
 
