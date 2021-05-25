@@ -141,6 +141,7 @@ int append(int indent_level, uint8_t** output, int* upto, int* len, int write_fd
 #define SHORTCHECK() ;/* if (upto >= len) return -1;*/
 int to_fixed_point(uint8_t* outbuf, int len, uint64_t mantissa, int64_t exponent, int negative)
 {
+    //printf("mantissa: %llu, exponent: %d\n", mantissa, exponent);
     int upto = 0;
     char digits[17];
     int digitcount = snprintf(digits, 17, "%llu", mantissa);
@@ -163,14 +164,14 @@ int to_fixed_point(uint8_t* outbuf, int len, uint64_t mantissa, int64_t exponent
         SHORTCHECK();
     }
     
-    if (digitupto < digitcount)
+    if (digitupto < digitcount) // && point != 0)
     {
         if (digitupto == 0)
         {
             outbuf[upto++] = '0';
             SHORTCHECK();
         }
-    
+   
         outbuf[upto++] = '.';
         SHORTCHECK();
 
@@ -657,7 +658,16 @@ int deserialize(
 
                     REQUIRE(20);
                     char currency[41];
-                    if (is_ascii_currency(n))
+                    uint64_t* c = (void*)(n);
+
+                    if (!c[0] && !c[1] && !*((uint32_t*)(n + 16)))
+                    {
+                        currency[0] = 'X';
+                        currency[1] = 'R';
+                        currency[2] = 'P';
+                        currency[3] = '\0';
+                    }
+                    else if (is_ascii_currency(n))
                     {
                         currency[0] = n[12];
                         currency[1] = n[13];
@@ -865,7 +875,16 @@ int deserialize(
                 }
                 issuer[0] = 'r';
                 char currency[41];
-                if (ascii)
+                
+                uint64_t* c = (void*)(n + 8);
+                if (!c[0] && !c[1] && !*((uint32_t*)(n + 8 + 16)))
+                {
+                    currency[0] = 'X';
+                    currency[1] = 'R';
+                    currency[2] = 'P';
+                    currency[3] = '\0';
+                }
+                else if (ascii)
                 {
                     for (int i = 0; i < 3; ++i)
                         currency[i] = (char)(*(n + 8 + 12 + i));
