@@ -813,7 +813,7 @@ int deserialize(
             {
                 // two byte size
                 REQUIRE(2);
-                field_len = 193 + ((field_len - 193) * 256) + *n;
+                field_len = 193 + ((field_len - 193) * 256) + *(n+1);
                 ADVANCE(2);
             }
             else
