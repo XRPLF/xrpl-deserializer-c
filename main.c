@@ -804,7 +804,7 @@ int deserialize(
         else if (type_code == 7 || type_code == 19) // blob
         {
             int64_t field_len = *n;
-            if (field_len <= 129)
+            if (field_len <= 192)
             {
                 // one byte size
                 ADVANCE(1);
