@@ -875,7 +875,7 @@ int deserialize(
                 }
                 issuer[0] = 'r';
                 char currency[41];
-                
+                currency[40] = '\0'; 
                 uint64_t* c = (void*)(n + 8);
                 if (!c[0] && !c[1] && !*((uint32_t*)(n + 8 + 16)))
                 {
