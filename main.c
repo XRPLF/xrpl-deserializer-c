@@ -1,5 +1,5 @@
 /**
- * XRPL Deserializer 
+ * XRPL Deserializer
  * Author: Richard Holland
  * Date: 21/5/21
  * Pass a hex encoded xrpl binary object via argument to the executable
@@ -36,8 +36,8 @@ int append(int indent_level, uint8_t** output, int* upto, int* len, int write_fd
         for (int i = 0; i < indent_level; ++i)
             if (write(write_fd, tab, 1) <= 0)
                 return 0;
-       
-        int l = strnlen(append, append_len); 
+
+        int l = strnlen(append, append_len);
         if (write(write_fd, append, l) < l)
             return 0;
 
@@ -72,7 +72,13 @@ int append(int indent_level, uint8_t** output, int* upto, int* len, int write_fd
 
 #define _REQUIRE(b,suppress)\
 {\
-    if (DEBUG) printf("\nREQUIRE CALLED AT LINE %d FOR %d bytes, remaining = %d\n", __LINE__, (b), remaining);\
+    if (DEBUG) printf("\nREQUIRE CALLED AT LINE %d FOR %d bytes, remaining = %d ["\
+            "%02X %02X %02X %02X %02X]\n", __LINE__, (b), remaining,\
+            (remaining >= 1 ? n[0] : 0), \
+            (remaining >= 2 ? n[1] : 0), \
+            (remaining >= 3 ? n[2] : 0), \
+            (remaining >= 4 ? n[3] : 0), \
+            (remaining >= 5 ? n[4] : 0));\
     if (remaining < (b) && !(!fetch_data_func && suppress))\
     {\
         if (!fetch_data_func)\
@@ -157,13 +163,13 @@ int to_fixed_point(uint8_t* outbuf, int len, uint64_t mantissa, int64_t exponent
         outbuf[upto++] = '-';
         SHORTCHECK();
     }
-    
+
     for (; point > 0; --point)
     {
         outbuf[upto++] = (digitupto >= digitcount ? '0' : digits[digitupto++]);
         SHORTCHECK();
     }
-    
+
     if (digitupto < digitcount) // && point != 0)
     {
         if (digitupto == 0)
@@ -171,12 +177,12 @@ int to_fixed_point(uint8_t* outbuf, int len, uint64_t mantissa, int64_t exponent
             outbuf[upto++] = '0';
             SHORTCHECK();
         }
-   
+
         outbuf[upto++] = '.';
         SHORTCHECK();
 
         printed_point = 1;
-    
+
         for (; point < 0; ++point)
         {
             outbuf[upto++] = '0';
@@ -228,7 +234,7 @@ int is_ascii_currency(uint8_t* y)
 int deserialize(
         uint8_t** output,
         uint8_t* input,
-        int input_len, 
+        int input_len,
         int (*fetch_data_func)(uint8_t*, int, int, int), // may be null, refills the input buffer with whatever is available
         int read_fd,    // may be 0 if unused, the fd to pass to fetch_data_func (if applicable)
         int write_fd)   // may be 0 if unused, the fd to write output to, if not specified then *output buffer is used
@@ -275,13 +281,13 @@ int deserialize(
 
     while (1)
     {
-    
+
         if (fetch_data_func)
         {
             _REQUIRE(1, 1);
             if (remaining == 0)
                 break;
-        }    
+        }
 
         if (array_level < 0)
         {
@@ -297,7 +303,7 @@ int deserialize(
         int field_code = -1;
         int type_code = -1;
 
-        if (n == 0)
+        if (*n == 0)
         {
             REQUIRE(3);
             // 3 byte header
@@ -345,10 +351,10 @@ int deserialize(
             field_code = (*n & 0xFU);
             ADVANCE(1);
         }
-       
+
 
         int end_of_object = ((type_code == 14 || type_code == 15) && field_code == 1);
-        
+
         int end_of_array = (parent_is_array & 1 && end_of_object);
 
 
@@ -362,8 +368,8 @@ int deserialize(
             printf("end of array: %d, end of object %d\n", end_of_array, end_of_object);
 
         if (!end_of_object && !end_of_array)
-            _REQUIRE(1,1); 
-        
+            _REQUIRE(1,1);
+
         nocomma = 0;
 
         if (type_code == 0)
@@ -375,7 +381,7 @@ int deserialize(
 
         int error = 0;
 
-        int size = 
+        int size =
             ( type_code == 1 ? 2U : // UINT16
             ( type_code == 2 ? 4U : // uint32
             ( type_code == 3 ? 8U : // uint64
@@ -391,7 +397,7 @@ int deserialize(
             ( type_code == 14 ? 0U : // array/object
             ( type_code == 15 ? 0U : // array/object
                 (error=1)))))))))))))));
-        
+
         if (error)
         {
             fprintf(stderr, "Error, unknown typecode %lu at byte %d\n", type_code, (input - n));
@@ -403,7 +409,7 @@ int deserialize(
 
         if (DEBUG)
             printf("field_id: %llx\n", field_id);
-        
+
         if (parent_is_array & 1 && !((type_code == 14 || type_code == 15) && field_code == 1))
         {
             append(APPENDPARAMS, SBUF("{\n"));
@@ -597,12 +603,12 @@ int deserialize(
             {
                 uint8_t path_type = *n;
                 ADVANCE(1);
-                
+
                 //printf("\nPATH TYPE: %02X\n", path_type);
                 if (path_type == 0x00U)
                     break;
 
-                
+
                 if (path_type == 0xFFU)
                 {
                     append(APPENDNOINDENT, SBUF("\n"));
@@ -676,11 +682,11 @@ int deserialize(
                     }
                     else
                         HEX(currency, n, 20);
-                    
+
                     currency[40] = '\0';
 
                     append(APPENDNOINDENT, currency, 40);
-                    
+
                     if (path_type)
                         append(APPENDNOINDENT, SBUF("\",\n"));
                     else
@@ -773,33 +779,44 @@ int deserialize(
         {
 
          //   printf("upto: %d, remaining: %d\n", upto, remaining);
-            REQUIRE(21);
-
-            char acc[64];
-            size_t acc_size = 64;
-            if (!b58check_enc(acc, &acc_size, 0, n + 1, 20))
+            REQUIRE(1);
+            uint8_t acc_size = *n;
+            ADVANCE(1);
+            // special case where account is null
+            if (acc_size == 0)
             {
-                fprintf(stderr, "Error: could not base58 encode\n");
-                return 0;
+                append(APPENDNOINDENT, SBUF("\"\""));
             }
-            acc[0] = 'r';
-            append(APPENDNOINDENT, SBUF("\""));
-            append(APPENDNOINDENT, acc, acc_size);
-            append(APPENDNOINDENT, SBUF("\""));
-            ADVANCE(21);
+            else
+            {
+                REQUIRE(20);
+
+                char acc[64];
+                size_t acc_size = 64;
+                if (!b58check_enc(acc, &acc_size, 0, n, 20))
+                {
+                    fprintf(stderr, "Error: could not base58 encode\n");
+                    return 0;
+                }
+                acc[0] = 'r';
+                append(APPENDNOINDENT, SBUF("\""));
+                append(APPENDNOINDENT, acc, acc_size);
+                append(APPENDNOINDENT, SBUF("\""));
+                ADVANCE(20);
+            }
         }
         else if (type_code == 4 || type_code == 5 || type_code == 17)
         {
             // uint128, uint256, uint160
             REQUIRE(size);
-            
+
             append(APPENDNOINDENT, SBUF("\""));
             char hexout[513];
             HEX(hexout, n, size);
             append(APPENDNOINDENT, hexout, size*2);
             append(APPENDNOINDENT, SBUF("\""));
 
-            ADVANCE(size);    
+            ADVANCE(size);
         }
         else if (type_code == 7 || type_code == 19) // blob
         {
@@ -857,7 +874,7 @@ int deserialize(
                 exponent >>= 6U;
                 char str[1024];
                 int is_neg = (((*n) >> 6U) & 1U == 0);
-                uint64_t mantissa = 
+                uint64_t mantissa =
                     (((uint64_t)((*(n+1) & 0b111111))) << 48U) +
                     (((uint64_t)((*(n+2)))) << 40U) +
                     (((uint64_t)((*(n+3)))) << 32U) +
@@ -875,7 +892,7 @@ int deserialize(
                 }
                 issuer[0] = 'r';
                 char currency[41];
-                currency[40] = '\0'; 
+                currency[40] = '\0';
                 uint64_t* c = (void*)(n + 8);
                 if (!c[0] && !c[1] && !*((uint32_t*)(n + 8 + 16)))
                 {
@@ -908,7 +925,7 @@ int deserialize(
 //                snprintf(str, 1024, "\t\"value\": \"%s%lluE%d\",\n", (is_neg ? "-" : ""), mantissa, exp);
                 {
                     uint8_t fixed[128];
-                    
+
                     if (to_fixed_point(fixed, 128, mantissa, exp, is_neg) == -1)
                         return fprintf(stderr, "Error: could not convert mantissa/exp to fixed point %lluE%d\n", mantissa, exp);
 
@@ -930,16 +947,16 @@ int deserialize(
                 REQUIRE(8);
                 char str[24];
                 int negative =  ((*n) >> 6U == 0);
-                uint64_t number =  
-                    ((uint64_t)((*n) & 0b111111U) << 56U) + 
-                    ((uint64_t)(*(n+1)) << 48U) + 
-                    ((uint64_t)(*(n+2)) << 40U) + 
-                    ((uint64_t)(*(n+3)) << 32U) + 
-                    ((uint64_t)(*(n+4)) << 24U) + 
-                    ((uint64_t)(*(n+5)) << 16U) + 
-                    ((uint64_t)(*(n+6)) <<  8U) + 
+                uint64_t number =
+                    ((uint64_t)((*n) & 0b111111U) << 56U) +
+                    ((uint64_t)(*(n+1)) << 48U) +
+                    ((uint64_t)(*(n+2)) << 40U) +
+                    ((uint64_t)(*(n+3)) << 32U) +
+                    ((uint64_t)(*(n+4)) << 24U) +
+                    ((uint64_t)(*(n+5)) << 16U) +
+                    ((uint64_t)(*(n+6)) <<  8U) +
                     ((uint64_t)(*(n+7)) <<  0U);
-                int l = snprintf(str, 23, "\"%s%llu\"", (negative ? "-" : ""), number); 
+                int l = snprintf(str, 23, "\"%s%llu\"", (negative ? "-" : ""), number);
                 append(APPENDNOINDENT, str, l);
                 ADVANCE(8);
             }
@@ -950,7 +967,7 @@ int deserialize(
             if (type_code == 1) // uint16
             {
                 REQUIRE(2);
-                number =  (((uint64_t)(*(n+0))) << 8U) + 
+                number =  (((uint64_t)(*(n+0))) << 8U) +
                           (((uint64_t)(*(n+1))) << 0U);
                 ADVANCE(2);
 
@@ -1009,14 +1026,14 @@ int deserialize(
                 }
                 else
                     skip_print = 0;
-            
+
                 if (skip_print)
                     continue;
             }
             else if (type_code == 2) // uint32
             {
                 REQUIRE(4);
-                number = 
+                number =
                     (((uint64_t)(*(n+0))) << 24U) +
                     (((uint64_t)(*(n+1))) << 16U) +
                     (((uint64_t)(*(n+2))) << 8U ) +
@@ -1027,7 +1044,7 @@ int deserialize(
             else if (type_code == 3) // uint64
             {
                 REQUIRE(8);
-                number = 
+                number =
                     (((uint64_t)(*(n+0))) << 56U) +
                     (((uint64_t)(*(n+1))) << 48U) +
                     (((uint64_t)(*(n+2))) << 40U ) +
@@ -1103,7 +1120,7 @@ int deserialize(
         }
     }
 
-    
+
 
     indent_level--;
     append(APPENDNOINDENT, SBUF("\n"));
@@ -1129,7 +1146,7 @@ int stream_refill(uint8_t* input, int input_len, int min_bytes_to_return, int re
         }
         else
             break;
-        
+
         half_continue:
 //        printf("\n  B:\n");
         bytes_read = read(read_fd, &(byte[1]), 1);
@@ -1142,18 +1159,18 @@ int stream_refill(uint8_t* input, int input_len, int min_bytes_to_return, int re
             break;
 
         // execution to here means two bytes
-        
+
         uint8_t hi = byte[0];
         uint8_t lo = byte[1];
 
         int error = 0;
         hi =    (hi >= 'A' && hi <= 'F' ? hi - 'A' + 10 :
-                (hi >= 'a' && hi <= 'f' ? hi - 'a' + 10 : 
+                (hi >= 'a' && hi <= 'f' ? hi - 'a' + 10 :
                 (hi >= '0' && hi <= '9' ? hi - '0' :
                  (error=1) )));
-    
+
         lo =    (lo >= 'A' && lo <= 'F' ? lo - 'A' + 10 :
-                (lo >= 'a' && lo <= 'f' ? lo - 'a' + 10 : 
+                (lo >= 'a' && lo <= 'f' ? lo - 'a' + 10 :
                 (lo >= '0' && lo <= '9' ? lo - '0' :
                  (error=1) )));
 
@@ -1178,7 +1195,7 @@ int stream_refill(uint8_t* input, int input_len, int min_bytes_to_return, int re
 int main(int argc, char** argv)
 {
     b58_sha256_impl = calc_sha_256;
-    
+
     int print_help =
         (argc != 2) ||
         (argc == 2 && (strcmp(argv[1], "--help") == 0));
@@ -1217,12 +1234,12 @@ int main(int argc, char** argv)
         uint8_t lo = *(x+1);
 
         hi =    (hi >= 'A' && hi <= 'F' ? hi - 'A' + 10 :
-                (hi >= 'a' && hi <= 'f' ? hi - 'a' + 10 : 
+                (hi >= 'a' && hi <= 'f' ? hi - 'a' + 10 :
                 (hi >= '0' && hi <= '9' ? hi - '0' :
                  (error=1) )));
-    
+
         lo =    (lo >= 'A' && lo <= 'F' ? lo - 'A' + 10 :
-                (lo >= 'a' && lo <= 'f' ? lo - 'a' + 10 : 
+                (lo >= 'a' && lo <= 'f' ? lo - 'a' + 10 :
                 (lo >= '0' && lo <= '9' ? lo - '0' :
                  (error=1) )));
 
